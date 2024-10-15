@@ -1,16 +1,18 @@
 import 'dart:convert';
 
+import 'package:doan/models/AccountShow.dart';
 import 'package:doan/models/Category.dart';
 import 'package:doan/models/Chapter.dart';
 import 'package:doan/models/Comment.dart';
 import 'package:doan/models/Story.dart';
 import 'package:doan/screens/base_screen.dart';
-import 'package:doan/services/category_service.dart';
 import 'package:doan/services/chapter_service.dart';
 import 'package:doan/services/commnet_service.dart';
 import 'package:doan/services/story_service.dart';
+import 'package:doan/widgets/comment_form.dart';
 import 'package:doan/widgets/comment_section.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChapterScreen extends StatefulWidget {
   final int storyId;
@@ -23,12 +25,15 @@ class ChapterScreen extends StatefulWidget {
 
 
 class _ChapStoryScreen extends State<ChapterScreen> {
+  Map<String, String> headers = <String, String>{};
   List<Category> categories = [];
   List<Chapter> listChapter = [];
   List<Comment> listComment = [];
-  int? _chapterId = 1;
+  int _chapterId = 1;
   Story? story;
   Chapter? chapter;
+  int acId = 0;
+
 
   @override
   void initState() {
@@ -36,16 +41,44 @@ class _ChapStoryScreen extends State<ChapterScreen> {
     _loadListChapter();
     _loadCommentByIdStory();
     _loadStory();
+    _loadChapter(_chapterId);
+    _loadUserName();
+  }
+
+  Future<AccountShow?> getAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? accountJson = prefs.getString('account');
+
+    if (accountJson != null) {
+      Map<String, dynamic> json = jsonDecode(accountJson);
+      return AccountShow.fromJson(json);
+    }
+    return null;
+  }
+
+  Future<void> _loadUserName() async {
+    AccountShow? account = await getAccount();
+    if (account != null) {
+      setState(() {
+        acId = account.acId;
+      });
+    } else{
+      acId = 0;
+    }
+    headers = {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Authorization': 'Bearer '
+    };
   }
 
   void _loadStory() async {
     final response = await StoryService().getStoryById(widget.storyId);
     if (response.statusCode == 200) {
       print(response.body);
-      final data = json.decode(response.body);
+      final data = json.decode(utf8.decode(response.bodyBytes));
       setState(() {
         // Kiểm tra nếu 'result' không phải null rồi mới tạo đối tượng Story
-        story = Story.fromJson(data['result']);
+        story = Story.fromJson(data);
       });
     } else {
       throw Exception('Failed to load Story');
@@ -56,9 +89,9 @@ class _ChapStoryScreen extends State<ChapterScreen> {
     final response = await ChapterService().getChapterById(chapterId);
     if (response.statusCode == 200) {
       //print(response.body);
-      final data = json.decode(response.body);
+      final data = json.decode(utf8.decode(response.bodyBytes));
       setState(() {
-        chapter = Chapter.fromJson(data['result']);
+        chapter = Chapter.fromJson(data);
       });
     } else {
       throw Exception('Failed to load Story');
@@ -102,7 +135,7 @@ class _ChapStoryScreen extends State<ChapterScreen> {
               children: [ // Thay thế bằng đường dẫn hình ảnh của bạn
                 Center(
                   child: Text(
-                    'story!.title',  // Sửa lại chính tả 'Gới thiệu' thành 'Giới thiệu'
+                    story == null ? '' : story!.title,  // Sửa lại chính tả 'Gới thiệu' thành 'Giới thiệu'
                     style: TextStyle(
                       fontSize: 30, // Tăng kích thước chữ
                       fontWeight: FontWeight.bold, // Tùy chọn: thêm độ đậm cho chữ
@@ -118,7 +151,6 @@ class _ChapStoryScreen extends State<ChapterScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Nút giảm
                       IconButton(
                         icon: Icon(Icons.navigate_before_sharp),
                         onPressed: () {
@@ -126,12 +158,16 @@ class _ChapStoryScreen extends State<ChapterScreen> {
                             if (_chapterId != null) {
                               int index = listChapter.indexWhere((chapter) => chapter.chapterId == _chapterId);
                               if (index > 0) {
-                                // Giảm xuống một chương
-                                _chapterId = listChapter[index - 1].chapterId;
+                                setState(() {
+                                  _chapterId = listChapter[index - 1].chapterId;
+                                  _loadChapter(_chapterId);
+                                });
                               }
                             } else if (listChapter.isNotEmpty) {
-                              // Nếu chưa chọn chương nào, chọn chương đầu tiên
-                              _chapterId = listChapter[0].chapterId;
+                              setState(() {
+                                _chapterId = listChapter[0].chapterId;
+                                _loadChapter(_chapterId);
+                              });
                             }
                           });
                         },
@@ -155,11 +191,11 @@ class _ChapStoryScreen extends State<ChapterScreen> {
                             ],
                             value: _chapterId,
                             onChanged: (int? value) {
-                              setState(() {
-                                _chapterId = value;
-                              });
                               if (value != null) {
-                                _loadChapter(value);
+                                setState(() {
+                                  _chapterId = value;
+                                });
+                                _loadChapter(_chapterId);
                               }
                             },
                           ),
@@ -173,12 +209,16 @@ class _ChapStoryScreen extends State<ChapterScreen> {
                             if (_chapterId != null) {
                               int index = listChapter.indexWhere((chapter) => chapter.chapterId == _chapterId);
                               if (index < listChapter.length - 1) {
-                                // Tăng lên một chương
-                                _chapterId = listChapter[index + 1].chapterId;
+                                setState(() {
+                                  _chapterId = listChapter[index + 1].chapterId;
+                                  _loadChapter(_chapterId);
+                                });
                               }
                             } else if (listChapter.isNotEmpty) {
-                              // Nếu chưa chọn chương nào, chọn chương đầu tiên
-                              _chapterId = listChapter[0].chapterId;
+                              setState(() {
+                                _chapterId = listChapter[0].chapterId;
+                                _loadChapter(_chapterId);
+                              });
                             }
                           });
                         },
@@ -191,18 +231,18 @@ class _ChapStoryScreen extends State<ChapterScreen> {
                 ),
 
                 Text(
-                  'chapter!.chapterTitle',
+                  chapter == null ? '' : 'Chapter: ${chapter!.chapterNumber}',
                   style: TextStyle(fontSize: 18),
                 ),
                 SizedBox(height: 16),
                 // Phần thân
                 Text(
-                  'Chương 01: Gió của mùa hè',
+                  chapter == null ? '' : 'Tiêu đề : ${chapter!.chapterTitle}',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Thành phố Kim Cảng lại bị gọi là City of Angels.\n\nCảng lớn thứ ba thế giới, lưu lượng một ngày thứ nhất ở Bắc bán cầu, đối với tòa thành thị này mọi người có lấy quá nhiều mỹ từ!',
+                  chapter == null ? '' : chapter!.content,
                   style: TextStyle(fontSize: 16),
                 ),
                 Center(
@@ -221,12 +261,16 @@ class _ChapStoryScreen extends State<ChapterScreen> {
                                     if (_chapterId != null) {
                                       int index = listChapter.indexWhere((chapter) => chapter.chapterId == _chapterId);
                                       if (index > 0) {
-                                        // Giảm xuống một chương
-                                        _chapterId = listChapter[index - 1].chapterId;
+                                        setState(() {
+                                          _chapterId = listChapter[index - 1].chapterId;
+                                          _loadChapter(_chapterId);
+                                        });
                                       }
                                     } else if (listChapter.isNotEmpty) {
-                                      // Nếu chưa chọn chương nào, chọn chương đầu tiên
-                                      _chapterId = listChapter[0].chapterId;
+                                      setState(() {
+                                        _chapterId = listChapter[0].chapterId;
+                                        _loadChapter(_chapterId);
+                                      });
                                     }
                                   });
                                 },
@@ -249,11 +293,11 @@ class _ChapStoryScreen extends State<ChapterScreen> {
                                     ],
                                     value: _chapterId,
                                     onChanged: (int? value) {
-                                      setState(() {
-                                        _chapterId = value;
-                                      });
                                       if (value != null) {
-                                        _loadChapter(value);
+                                        setState(() {
+                                          _chapterId = value;
+                                        });
+                                        _loadChapter(_chapterId);
                                       }
 
                                     },
@@ -268,12 +312,16 @@ class _ChapStoryScreen extends State<ChapterScreen> {
                                     if (_chapterId != null) {
                                       int index = listChapter.indexWhere((chapter) => chapter.chapterId == _chapterId);
                                       if (index < listChapter.length - 1) {
-                                        // Tăng lên một chương
+                                        setState(() {
                                         _chapterId = listChapter[index + 1].chapterId;
+                                        _loadChapter(_chapterId);
+                                        });
                                       }
                                     } else if (listChapter.isNotEmpty) {
-                                      // Nếu chưa chọn chương nào, chọn chương đầu tiên
-                                      _chapterId = listChapter[0].chapterId;
+                                      setState(() {
+                                        _chapterId = listChapter[0].chapterId;
+                                        _loadChapter(_chapterId);
+                                      });
                                     }
                                   });
                                 },
@@ -304,6 +352,19 @@ class _ChapStoryScreen extends State<ChapterScreen> {
                         : CommentSection(comments: listComment),
                   ],
                 ),
+                acId == 0 || story == null || chapter == null
+                ? SizedBox.shrink()
+                : CommentFormWidget(
+                    accountId: acId,
+                    storyId: story!.storyId,
+                    chapterId: chapter!.chapterId,
+                    onSubmit: (accountId, storyId, chapterId, content) {
+                      print('Bình luận đã được gửi: $content');
+                    },
+                    onCommentAdded: () {
+                      _loadCommentByIdStory();
+                    },
+                  ),
 
           ],
         ),

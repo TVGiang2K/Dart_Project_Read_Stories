@@ -1,15 +1,21 @@
 import 'dart:convert';
 
 import 'package:doan/common/UriAPI.dart';
+import 'package:doan/models/AccountShow.dart';
 import 'package:doan/models/Comment.dart';
+import 'package:doan/models/Favorite.dart';
+import 'package:doan/models/FavoriteDTOInsert.dart';
 import 'package:doan/models/Story.dart';
 import 'package:doan/screens/chap_screen.dart';
 import 'package:doan/services/commnet_service.dart';
+import 'package:doan/services/favorite_service.dart';
 import 'package:doan/services/story_service.dart';
+import 'package:doan/widgets/comment_form.dart';
 import 'package:doan/widgets/comment_section.dart';
 import 'package:doan/widgets/story_card.dart';
 import 'package:doan/widgets/story_carousel.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'base_screen.dart';
 
@@ -22,10 +28,17 @@ class DetailStoryScreen extends StatefulWidget {
 }
 
 class _DetailStoryState extends State<DetailStoryScreen>  {
+  final FavoriteService _favoriteService = FavoriteService();
   List<Story> storiesByIdCate = [];
   List<Story> storiesByIdAuthor = [];
   List<Comment> listComment = [];
+  Favorite? favorite;
+  List<Favorite> listFavorite = [];
+  bool isFavorite =  false;
+  Map<String, String> headers = <String, String>{};
+
   int stoId = 0;
+  int acId = 0;
 
 
   @override
@@ -34,10 +47,110 @@ class _DetailStoryState extends State<DetailStoryScreen>  {
     _loadStoryByIdAuthor(widget.story.author.authorId);
     _loadCommentByIdStory(widget.story.storyId);
     stoId = widget.story.storyId;
+    // _checkFavorite(acId, widget.story.storyId);
+    // isFavorite = isStoryInFavorites(widget.story.storyId);
+    _loadUserName();
+  }
+
+  Future<AccountShow?> getAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? accountJson = prefs.getString('account');
+
+    if (accountJson != null) {
+      Map<String, dynamic> json = jsonDecode(accountJson);
+      return AccountShow.fromJson(json);
+    }
+    return null;
+  }
+
+  Future<void> _loadUserName() async {
+    AccountShow? account = await getAccount();
+    if (account != null) {
+      setState(() {
+        acId = account.acId;
+        _checkFavorite(acId, widget.story.storyId);
+      });
+    } else{
+      acId = 0;
+    }
+    headers = {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Authorization': 'Bearer '
+    };
+  }
+
+
+  void _checkFavorite(int acId, int storyId) async {
+    final response = await FavoriteService().getFavoriteByIdUser(acId);
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
+      setState(() {
+        listFavorite = data.map((json) => Favorite.fromJson(json)).toList();
+        isFavorite = isStoryInFavorites(storyId);
+        if (isFavorite) {
+          favorite = listFavorite.firstWhere((fav) => fav.story.storyId == storyId);
+        } else {
+          favorite = null;
+        }
+      });
+    } else {
+      throw Exception('Failed to load Favorite by User');
+    }
+  }
+
+  bool isStoryInFavorites(int storyId) {
+    return listFavorite.any((favorite) => favorite.story.storyId == storyId);
   }
 
   void removeStoryById(List<Story> storyList, int storyId) {
     storyList.removeWhere((story) => story.storyId == storyId);
+  }
+
+  Future<bool> _deleteFavorite(int favoriteId) async {
+    try {
+      final response = await FavoriteService().deleteFavorite(favoriteId);
+      if (response.statusCode == 200) {
+        setState(() {
+          listFavorite.removeWhere((favorite) => favorite.favoriteId == favoriteId);
+          favorite = null;
+          isFavorite = false;
+        });
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      return false;
+    }
+  }
+
+  void _addFavorite(int accountId, int storyId) async {
+    FavoriteDTOInsert newFavorite = FavoriteDTOInsert(
+      accountId: accountId,
+      storyId: storyId,
+    );
+
+    try {
+      final response = await _favoriteService.insertFavorite(newFavorite);
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Thêm vào danh sách yêu thích thành công!'),backgroundColor: Colors.green,),
+        );
+        setState(() {
+          isFavorite = true;
+        });
+      } else {
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không thể thêm vào danh sách yêu thích!'),backgroundColor: Colors.red,),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Có lỗi xảy ra: ${e.toString()}')),
+      );
+    }
   }
 
   void _loadCommentByIdStory(int storyId) async {
@@ -141,15 +254,36 @@ class _DetailStoryState extends State<DetailStoryScreen>  {
                           ),
                         ),
 
-                        // Icon trái tim để thêm vào yêu thích
-                        IconButton(
+                        acId == 0
+                            ? SizedBox.shrink()
+                            : IconButton(
                           icon: Icon(
-                            Icons.favorite_border, // Icon trái tim chưa được thêm
-                            color: Colors.red,
+                            isFavorite ? Icons.favorite : Icons.favorite_border,
+                            color: isFavorite ? Colors.red : Colors.grey,
                           ),
-                          onPressed: () {
-                            // Xử lý sự kiện khi người dùng nhấn vào trái tim
-                            // Ví dụ: Gọi hàm thêm vào yêu thích
+                          onPressed: () async {
+                            if (isFavorite) {
+                              bool success = await _deleteFavorite(favorite!.favoriteId);
+                              if (success) {
+                                _checkFavorite(acId, widget.story.storyId);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Bỏ yêu thích thành công!'),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Bỏ yêu thích không thành công!'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            } else {
+                              _addFavorite(acId, widget.story.storyId);
+                              _checkFavorite(acId, widget.story.storyId);
+                            }
                           },
                         ),
                       ],
@@ -169,8 +303,25 @@ class _DetailStoryState extends State<DetailStoryScreen>  {
             ],
           ),
           SizedBox(height: 16.0),
-          // Nút "Đọc Truyện"
-          SizedBox(
+
+          widget.story.totalChapter == 0
+          ? SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {},
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange, // Màu nền nút
+                padding: EdgeInsets.symmetric(vertical: 12.0),
+                textStyle: TextStyle(
+                  fontSize: 18.0,
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              child: Text('Hiện chưa phát hành'),
+            ),
+          )
+          : SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
@@ -186,6 +337,7 @@ class _DetailStoryState extends State<DetailStoryScreen>  {
                 padding: EdgeInsets.symmetric(vertical: 12.0),
                 textStyle: TextStyle(
                   fontSize: 18.0,
+                  color: Colors.black,
                   fontWeight: FontWeight.bold,
                 ),
               ),

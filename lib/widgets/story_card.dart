@@ -19,10 +19,12 @@ class StoryCard extends StatelessWidget {
           elevation: 3,
           margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
           child: ListTile(
-            leading: Image.network(
-              "${UriApi.api_image}${story.coverImage}", // URL hình ảnh
+            leading: SizedBox(
               width: 50,
-              fit: BoxFit.cover,
+              child: Image.network(
+                "${UriApi.api_image}${story.coverImage}", // URL hình ảnh
+                fit: BoxFit.cover,
+              ),
             ),
             title: Text(
               story.title, // Tiêu đề câu chuyện
@@ -46,7 +48,7 @@ class StoryCard extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => DetailStoryScreen(story: story,),
+                  builder: (context) => DetailStoryScreen(story: story),
                 ),
               );
             },

@@ -22,14 +22,10 @@ class StoryService {
         .get(Uri.parse('${UriApi.api}/GetFavotireStoryTop5'), headers: headers);
   }
 
-  // Future<http.Response> SearchStoryByIdName(String name) {
-  //   return http.get(Uri.parse('${UriApi.api}/StoryByName/$name'),
-  //       headers: headers);
-  // }
 
-  Future<http.Response> getStorySearch(String name) {
-    return SearchStoryByIdName(name); // Gọi phương thức tìm kiếm với tên
-  }
+  // Future<http.Response> getStorySearch(String name) {
+  //   return SearchStoryByIdName(name);
+  // }
 
   Future<http.Response> SearchStoryByIdName(String name) {
     return http.get(Uri.parse('${UriApi.api}/StoryByName/$name'), headers: headers);

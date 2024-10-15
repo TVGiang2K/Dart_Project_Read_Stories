@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:doan/models/AccountShow.dart';
 import 'package:doan/models/Story.dart';
 import 'package:doan/screens/home_screen.dart';
 import 'package:doan/screens/list_story_screen.dart';
@@ -8,12 +9,59 @@ import 'package:doan/screens/user_info_screen.dart';
 import 'package:doan/services/story_service.dart';
 import 'package:doan/widgets/story_card.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'login_screen.dart';
 
-class BaseScreen extends StatelessWidget {
+class BaseScreen extends StatefulWidget {
   final Widget body;
 
   BaseScreen({required this.body});
+  @override
+  _BaseScreenState createState() => _BaseScreenState();
+}
+
+class _BaseScreenState extends State<BaseScreen> {
+  Map<String, String> headers = <String, String>{};
+  String? _userName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserName();
+  }
+
+  Future<AccountShow?> getAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? accountJson = prefs.getString('account');
+
+    if (accountJson != null) {
+      Map<String, dynamic> json = jsonDecode(accountJson);
+      return AccountShow.fromJson(json);
+    }
+    return null;
+  }
+
+  Future<void> _loadUserName() async {
+    AccountShow? account = await getAccount();
+    if (account != null) {
+      setState(() {
+        _userName = account.userName;
+      });
+    } else{
+      _userName = null;
+    }
+    headers = {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Authorization': 'Bearer '
+    };
+  }
+
+  Future<void> removeAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('account');
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +99,9 @@ class BaseScreen extends StatelessWidget {
                     style: TextStyle(color: Colors.white, fontSize: 24),
                   ),
                   SizedBox(height: 16),
-                  GestureDetector(
+                  _userName == null
+                  ? SizedBox.shrink()
+                  : GestureDetector(
                     onTap: () {
                       // Thực hiện điều hướng đến trang thông tin người dùng
                       Navigator.push(
@@ -70,7 +120,7 @@ class BaseScreen extends StatelessWidget {
                         ),
                         SizedBox(width: 8), // Khoảng cách giữa biểu tượng và tên
                         Text(
-                          'userName',
+                          '$_userName',
                           style: TextStyle(color: Colors.white, fontSize: 18),
                         ),
                       ],
@@ -99,30 +149,50 @@ class BaseScreen extends StatelessWidget {
                 );
               },
             ),
-            ListTile(
-              leading: Icon(Icons.login),
-              title: Text('Đăng Nhập'),
+            _userName == null
+                ? Column(
+              children: [
+                ListTile(
+                  leading: Icon(Icons.login),
+                  title: Text('Đăng Nhập'),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => LoginScreen()),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.add_outlined),
+                  title: Text('Đăng Ký'),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => RegisterScreen()),
+                    );
+                  },
+                ),
+              ],
+            )
+            : ListTile(
+              leading: Icon(Icons.logout),
+              title: Text('Đăng Xuất'),
               onTap: () {
-                Navigator.push(
+                // Logic đăng xuất ở đây
+                setState(() {
+                  removeAccount();
+                  _loadUserName();
+                });
+                Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.add_outlined),
-              title: Text('Đăng Ký'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => RegisterScreen()),
+                  MaterialPageRoute(builder: (context) => HomeScreen()),
                 );
               },
             ),
           ],
-        ),
+            ),
       ),
-      body: body,
+      body: widget.body,
       // body: SingleChildScrollView(
       //   child: Column(
       //     children: [
@@ -165,7 +235,7 @@ class BaseScreen extends StatelessWidget {
 class StorySearchDelegate extends SearchDelegate {
   Future<List<Story>> fetchSearchResults(String name) async {
     // Gọi API và nhận phản hồi
-    final response = await StoryService().getStorySearch(name);
+    final response = await StoryService().SearchStoryByIdName(name);
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
       return data.map((json) => Story.fromJson(json)).toList(); // Trả về danh sách câu chuyện
@@ -226,10 +296,7 @@ class StorySearchDelegate extends SearchDelegate {
           child: ListView(
             children: [
               ListTile(
-                title: Text('Gợi ý 1 cho "$query"'),
-              ),
-              ListTile(
-                title: Text('Gợi ý 2 cho "$query"'),
+                title: Text('Gợi ý cho "$query"'),
               ),
             ],
           ),
